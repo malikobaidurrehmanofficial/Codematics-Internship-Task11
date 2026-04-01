@@ -1,144 +1,180 @@
-import { useState, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Search as SearchIcon, X } from 'lucide-react';
-import { searchMovies } from '../services/tmdb';
-import { useDebounce } from '../hooks/useDebounce';
-import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
-import MovieCard from '../components/movie/MovieCard';
-import MovieSkeleton from '../components/movie/MovieSkeleton';
+import MovixMovieGrid from '../components/movie/MovixMovieGrid';
+import MovixMovieSkeleton from '../components/movie/MovixMovieSkeleton';
+import MovixButton from '../components/ui/MovixButton';
+import { searchMovies } from '../services/movixTmdb';
+import { classNames } from '../utils/helpers';
+
+const inputClass =
+  'h-[54px] w-full rounded-2xl border border-app bg-black/30 px-4 pl-12 text-app outline-none transition placeholder:text-muted focus:border-[#E50914]/50 focus:bg-black/45';
 
 export default function Search() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [query, setQuery] = useState(searchParams.get('q') || '');
+  const initialQuery = searchParams.get('q') || '';
+  const [query, setQuery] = useState(initialQuery);
+  const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
+  const [results, setResults] = useState([]);
   const [page, setPage] = useState(1);
-  const [allResults, setAllResults] = useState([]);
+  const [totalResults, setTotalResults] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const debouncedQuery = useDebounce(query, 500);
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedQuery(query.trim());
+    }, 450);
 
-  const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['searchMovies', debouncedQuery, page],
-    queryFn: async () => {
-      const res = await searchMovies(debouncedQuery, page);
-      if (page === 1) {
-        setAllResults(res.results || []);
-      } else {
-        setAllResults((prev) => [...prev, ...(res.results || [])]);
+    return () => window.clearTimeout(timeoutId);
+  }, [query]);
+
+  useEffect(() => {
+    setSearchParams(debouncedQuery ? { q: debouncedQuery } : {});
+  }, [debouncedQuery, setSearchParams]);
+
+  useEffect(() => {
+    const loadResults = async () => {
+      if (!debouncedQuery) {
+        setResults([]);
+        setTotalResults(0);
+        setTotalPages(1);
+        setPage(1);
+        return;
       }
-      return res;
-    },
-    enabled: debouncedQuery.length > 0,
-  });
 
-  const hasMore = data ? page < data.total_pages : false;
+      setIsLoading(true);
 
-  const loadMore = useCallback(() => {
-    if (hasMore && !isFetching) {
-      setPage((p) => p + 1);
-    }
-  }, [hasMore, isFetching]);
+      try {
+        const data = await searchMovies(debouncedQuery, page);
+        setTotalResults(data.total_results || 0);
+        setTotalPages(data.total_pages || 1);
+        setResults((current) =>
+          page === 1 ? data.results || [] : [...current, ...(data.results || [])]
+        );
+      } catch (error) {
+        console.error('Search error', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-  const lastRef = useInfiniteScroll(loadMore, { enabled: hasMore && !isFetching });
+    loadResults();
+  }, [debouncedQuery, page]);
 
-  const handleQueryChange = (value) => {
-    setQuery(value);
+  const hasResults = results.length > 0;
+  const canLoadMore = page < totalPages && !isLoading;
+
+  const handleClear = () => {
+    setQuery('');
+    setDebouncedQuery('');
+    setResults([]);
     setPage(1);
-    setSearchParams(value ? { q: value } : {});
-    if (!value) {
-       setAllResults([]);
-    }
   };
 
+  const handleLoadMore = () => {
+    if (!canLoadMore) {
+      return;
+    }
+    setPage((current) => current + 1);
+  };
+
+  const showEmpty = !isLoading && debouncedQuery && !hasResults;
+  const showIntro = !debouncedQuery && !isLoading;
+
+  const resultSummary = useMemo(() => {
+    if (!debouncedQuery) {
+      return null;
+    }
+    if (isLoading && page === 1) {
+      return 'Searching...';
+    }
+    return `${totalResults} result${totalResults === 1 ? '' : 's'} found`;
+  }, [debouncedQuery, isLoading, page, totalResults]);
+
   return (
-    <div className="pt-20 md:pt-24 pb-16 md:pb-20 min-h-screen bg-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header Section */}
-        <div className="mb-12 md:mb-16">
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 mb-4">
-            Search Movies
-          </h1>
-          <p className="text-lg text-gray-600 max-w-2xl">
-            Find thousands of films by title, actors, or directors.
-          </p>
-        </div>
-
-        {/* Search Bar */}
-        <div className="mb-16 md:mb-20">
-          <div className="relative max-w-3xl">
-            <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-            <input
-              id="search-page-input"
-              type="text"
-              value={query}
-              onChange={(e) => handleQueryChange(e.target.value)}
-              placeholder="Search movies..."
-              className="w-full pl-12 pr-12 py-3 md:py-4 rounded-lg border border-gray-300 text-base md:text-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-            />
-            {query && (
-              <button
-                onClick={() => handleQueryChange('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded hover:bg-gray-100 transition"
-              >
-                <X className="h-5 w-5 text-gray-400" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Results Section */}
-        {isLoading && page === 1 && debouncedQuery ? (
+    <div className="bg-app pb-24 pt-28">
+      <div className="max-w-7xl mx-auto px-6 md:px-10 lg:px-16">
+        <div className="mb-10 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-sm text-gray-600 mb-6">Searching...</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-              {Array.from({ length: 10 }).map((_, i) => (
-                <MovieSkeleton key={`skel-initial-${i}`} />
-              ))}
-            </div>
-          </div>
-        ) : allResults.length > 0 ? (
-          <div>
-            {data && debouncedQuery && (
-              <p className="text-sm text-gray-600 mb-6">
-                Found <span className="font-semibold text-gray-900">{data.total_results}</span> result{data.total_results !== 1 ? 's' : ''}
-              </p>
-            )}
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-              {allResults.map((movie, idx) => {
-                if (movie.media_type && movie.media_type !== 'movie') return null;
-                
-                return (
-                  <div
-                    key={`${movie.id}-${idx}`}
-                    ref={idx === allResults.length - 1 ? lastRef : null}
-                  >
-                    <MovieCard movie={movie} />
-                  </div>
-                );
-              })}
-              {isFetching &&
-                Array.from({ length: 5 }).map((_, i) => <MovieSkeleton key={`skel-more-${i}`} />)}
-            </div>
-          </div>
-        ) : debouncedQuery && !isLoading ? (
-          <div className="text-center py-16">
-            <p className="text-5xl mb-4">🔍</p>
-            <h3 className="text-2xl font-bold text-gray-900 mb-2">No movies found</h3>
-            <p className="text-gray-600">
-              Try a different search query.
+            <p className="text-muted text-xs uppercase tracking-[0.35em]">Movix Search</p>
+            <h1 className="text-app mt-3 text-3xl font-semibold md:text-4xl">Find your next movie.</h1>
+            <p className="text-muted mt-2 max-w-2xl text-sm">
+              Search the catalog by title and jump straight into the details.
             </p>
           </div>
-        ) : (
-          !debouncedQuery && (
-            <div className="text-center py-16">
-              <SearchIcon className="w-20 h-20 mx-auto mb-6 text-gray-300" />
-              <h3 className="text-2xl font-semibold text-gray-700">Start searching</h3>
-              <p className="text-gray-600 text-sm mt-2">
-                Type a movie title to find what you're looking for
-              </p>
+          <Link to="/#discover">
+            <MovixButton variant="secondary">Browse Discover</MovixButton>
+          </Link>
+        </div>
+
+        <div className="surface-card border-app mb-10 rounded-[28px] border p-4 md:p-6">
+          <div className="relative">
+            <SearchIcon className="text-muted absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2" />
+            <input
+              className={inputClass}
+              onChange={(event) => {
+                setPage(1);
+                setQuery(event.target.value);
+              }}
+              placeholder="Search movies..."
+              value={query}
+            />
+            {query ? (
+              <button
+                aria-label="Clear search"
+                className="text-muted absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-2 transition hover:bg-white/10"
+                onClick={handleClear}
+                type="button"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : null}
+          </div>
+          {resultSummary ? (
+            <p className="text-muted mt-3 text-sm">{resultSummary}</p>
+          ) : null}
+        </div>
+
+        {isLoading && page === 1 ? (
+          <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            <MovixMovieSkeleton count={10} />
+          </div>
+        ) : null}
+
+        {hasResults ? (
+          <>
+            <MovixMovieGrid isLoading={isLoading} movies={results} showHint={false} />
+            <div className="mt-10 flex justify-center">
+              <MovixButton
+                className={classNames(canLoadMore ? '' : 'opacity-40')}
+                disabled={!canLoadMore}
+                onClick={handleLoadMore}
+                variant="secondary"
+              >
+                {canLoadMore ? 'Load more' : 'No more results'}
+              </MovixButton>
             </div>
-          )
-        )}
+          </>
+        ) : null}
+
+        {showEmpty ? (
+          <div className="surface-card border-app mt-10 rounded-[32px] border p-10 text-center">
+            <h2 className="text-app text-2xl font-semibold">No matches yet.</h2>
+            <p className="text-muted mt-3">
+              Try a different title or browse the trending rows instead.
+            </p>
+          </div>
+        ) : null}
+
+        {showIntro ? (
+          <div className="surface-card border-app mt-10 rounded-[32px] border p-10 text-center">
+            <h2 className="text-app text-2xl font-semibold">Start typing to search.</h2>
+            <p className="text-muted mt-3">
+              Look up any movie title and Movix will pull the results instantly.
+            </p>
+          </div>
+        ) : null}
       </div>
     </div>
   );

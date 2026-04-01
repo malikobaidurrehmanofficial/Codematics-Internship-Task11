@@ -101,8 +101,8 @@ export default function MovixNavbar() {
             </button>
             <Link
               aria-label="Discover titles"
-              className={iconLinkClass(location.hash === '#discover')}
-              to="/#discover"
+              className={iconLinkClass(location.pathname === '/search')}
+              to="/search"
             >
               <Search className="h-4 w-4" />
             </Link>

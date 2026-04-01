@@ -4,6 +4,7 @@ import Auth from '../pages/Auth';
 import Home from '../pages/Home';
 import MovieDetails from '../pages/MovieDetails';
 import Watchlist from '../pages/Watchlist';
+import Search from '../pages/Search';
 
 export default function AppRouter() {
   return (
@@ -14,6 +15,7 @@ export default function AppRouter() {
           <Route path="/movie/:id" element={<MovieDetails />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/watchlist" element={<Watchlist />} />
+          <Route path="/search" element={<Search />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
