@@ -1,9 +1,11 @@
 import { Heart, Moon, Search, Star, Sun, User } from 'lucide-react';
-import { Link, useLocation } from 'react-router-dom';
-import { useSelector } from 'react-redux';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
 import { useEffect, useState } from 'react';
 import { classNames } from '../../utils/helpers';
 import logo from '../../assets/logo.png';
+import { logOut } from '../../services/authService';
+import { logout } from '../../store/authSlice';
 
 const iconLinkClass = (active) =>
   classNames(
@@ -23,9 +25,13 @@ const getInitialTheme = () => {
 
 export default function MovixNavbar() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
+  const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
   const watchlistCount = useSelector((state) => state.watchlist.movieIds.length);
   const [isLight, setIsLight] = useState(getInitialTheme);
+  const [accountOpen, setAccountOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.classList.toggle('theme-light', isLight);
@@ -34,6 +40,26 @@ export default function MovixNavbar() {
 
   const toggleTheme = () => {
     setIsLight((prev) => !prev);
+  };
+
+  const handleAccountClick = () => {
+    if (!isAuthenticated) {
+      navigate('/auth');
+      return;
+    }
+
+    setAccountOpen((prev) => !prev);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logOut();
+      dispatch(logout());
+      setAccountOpen(false);
+      navigate('/');
+    } catch (error) {
+      console.error('Logout failed', error);
+    }
   };
 
   return (
@@ -99,14 +125,38 @@ export default function MovixNavbar() {
                 </span>
               ) : null}
             </Link>
-            <Link
-              aria-label="Open account"
-              className={iconLinkClass(location.pathname === '/auth')}
-              to="/auth"
-            >
-              <User className="h-4 w-4" />
-              {user ? <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#E50914]" /> : null}
-            </Link>
+            <div className="relative">
+              <button
+                aria-label="Open account menu"
+                className={iconLinkClass(location.pathname === '/auth' || accountOpen)}
+                onClick={handleAccountClick}
+                type="button"
+              >
+                <User className="h-4 w-4" />
+                {user ? <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#E50914]" /> : null}
+              </button>
+              {accountOpen ? (
+                <div className="surface-card border-app absolute right-0 mt-3 w-44 rounded-2xl border p-2 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+                  <button
+                    className="text-app w-full rounded-xl px-3 py-2 text-left text-sm transition hover:bg-white/10"
+                    onClick={() => {
+                      setAccountOpen(false);
+                      navigate('/watchlist');
+                    }}
+                    type="button"
+                  >
+                    My List
+                  </button>
+                  <button
+                    className="w-full rounded-xl px-3 py-2 text-left text-sm text-[#E50914] transition hover:bg-[#E50914]/10"
+                    onClick={handleLogout}
+                    type="button"
+                  >
+                    Log out
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>
